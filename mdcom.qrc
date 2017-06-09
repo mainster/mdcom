@@ -5,7 +5,9 @@
         <file>images/application-exit.png</file>
         <file>images/settings.png</file>
         <file>images/clear.png</file>
-        <file>images/virtual-com.png</file>
-        <file>images/opaque.png</file>
+        <file>images/usb-ttl232_1.png</file>
+        <file>images/usb-ttl232_2.png</file>
+        <file>images/serial-settings.png</file>
+        <file>images/com-port.png</file>
     </qresource>
 </RCC>

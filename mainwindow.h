@@ -68,7 +68,6 @@ private slots:
 
 protected:
 	void resizeEvent(QResizeEvent *) override;
-	void focusOutEvent(QFocusEvent *e) override;
 	void closeEvent(QCloseEvent *e) override;
 
 protected slots:
@@ -84,11 +83,11 @@ private:
 	SettingsDialog		*settings;
 	QSerialPort			*serial;
 	Appearance			m_appearance;
-	int					buildNo;
-	int					wrapStateMsgAt;
 	QSlider				*sldrOpacity;
 	QComboBox			*cbxAppearanceOpts;
 	static QString		stateStr, stateStrWraped;
+	int					buildNo;
+	int					wrapStateMsgAt;
 };
 
 Q_DECLARE_METATYPE(MainWindow::Appearance);

@@ -53,7 +53,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	connect(serial, &QSerialPort::readyRead, this, &MainWindow::readData);
 	connect(console, &Console::getData, this, &MainWindow::writeData);
 	setWindowTitle(tr("%1  build: %2").arg(config.applicationName()).arg(buildNo));
-	setWindowIcon(QIcon(":/images/virtual-com.png"));
+	setWindowIcon(QIcon(":/images/usb-ttl232_1.png"));
 
 	/**
 	 * @brief	Restore settings from config file
@@ -98,6 +98,106 @@ MainWindow::~MainWindow() {
 /* ======================================================================== */
 /*                              Window visuals                              */
 /* ======================================================================== */
+void MainWindow::setWindowOpacity(qreal level) {
+	QSETTINGS;
+	QWidget::setWindowOpacity(level);
+	config.setValue(tr("windowOpacity"), level);
+}
+void MainWindow::resizeEvent(QResizeEvent *) {
+	(wrapStateMsgAt < geometry().width())
+			? ui->mainToolBar->setOrientation(Qt::Horizontal)
+			: ui->mainToolBar->setOrientation(Qt::Vertical);
+	refreshStateMsg();
+
+	INFO << toolBarArea(ui->mainToolBar);
+
+}
+void MainWindow::closeEvent(QCloseEvent *e) {
+	Q_UNUSED(e)
+}
+/* ======================================================================== */
+/*                             QSerial related                              */
+/* ======================================================================== */
+void MainWindow::openSerialPort() {
+	SettingsDialog::Settings p = settings->settings();
+	serial->setPortName(p.ttyName);
+	serial->setBaudRate(p.baudrate);
+	serial->setDataBits(p.dataBits);
+	serial->setParity(p.parity);
+	serial->setStopBits(p.stopBits);
+	serial->setFlowControl(p.flowCtrl);
+
+	if (serial->open(QIODevice::ReadWrite)) {
+		console->setEnabled(true);
+		console->setLocalEchoEnabled(p.localEchoOn);
+		ui->actConnect->setEnabled(false);
+		ui->actDisconnect->setEnabled(true);
+		ui->actConfig->setEnabled(false);
+		refreshStateMsg();
+	}
+	else {
+		QMessageBox::critical(this, tr("Error"), serial->errorString());
+
+		showStatusMessage(tr("Open error"));
+	}
+}
+void MainWindow::refreshStateMsg() {
+	SettingsDialog::Settings p = settings->settings();
+	QString msgStr;
+
+	(wrapStateMsgAt < geometry().width())
+			? msgStr = stateStr
+			: msgStr = stateStrWraped;
+
+	showStatusMessage(msgStr
+							.arg(p.ttyName).arg(p.sBaudrate).arg(p.sDataBits)
+							.arg(p.sParity).arg(p.sStopBits).arg(p.sFlowCtrl));
+}
+void MainWindow::closeSerialPort() {
+	if (serial->isOpen())
+		serial->close();
+
+//	console->setEnabled(false);
+	ui->actConnect->setEnabled(true);
+	ui->actDisconnect->setEnabled(false);
+	ui->actConfig->setEnabled(true);
+	showStatusMessage(tr("Disconnected"));
+
+	QSETTINGS;
+}
+void MainWindow::writeData(const QByteArray &data) {
+	serial->write(data);
+}
+void MainWindow::readData() {
+	QByteArray data = serial->readAll();
+	console->putData(data);
+}
+void MainWindow::handleError(QSerialPort::SerialPortError error) {
+	if (error == QSerialPort::ResourceError) {
+		QMessageBox::critical(this, tr("Critical Error"), serial->errorString());
+		closeSerialPort();
+	}
+}
+/* ======================================================================== */
+/*                                 Helpers                                  */
+/* ======================================================================== */
+void MainWindow::initActionsConnections() {
+	connect(ui->actConnect, &QAction::triggered, this, &MainWindow::openSerialPort);
+	connect(ui->actDisconnect, &QAction::triggered, this, &MainWindow::closeSerialPort);
+	connect(ui->actQuit, &QAction::triggered, this, &MainWindow::close);
+	connect(ui->actConfig, &QAction::triggered, settings, &MainWindow::show);
+	connect(ui->actClear, &QAction::triggered, console, &Console::clear);
+	connect(ui->actAbout, &QAction::triggered, this, &MainWindow::about);
+}
+void MainWindow::showStatusMessage(const QString &message) {
+	status->setText(message);
+}
+void MainWindow::about() {
+	QMessageBox::about(this, "About " + qAppName(),
+							 tr("The <b>%1</b> provides standard as also non-standard "
+								 "serial port related functions.").arg(qAppName()));
+}
+
 /*
 void MainWindow::onSetAppearanceOpts(bool checked) {
 	if (checked) {
@@ -159,124 +259,3 @@ void MainWindow::onSliderChanged(int value) {
 	setWindowOpacity(qreal(value)/100);
 }
 */
-void MainWindow::setWindowOpacity(qreal level) {
-	QSETTINGS;
-	QWidget::setWindowOpacity(level);
-	config.setValue(tr("windowOpacity"), level);
-}
-
-void MainWindow::resizeEvent(QResizeEvent *) {
-	(wrapStateMsgAt < geometry().width())
-			? ui->mainToolBar->setOrientation(Qt::Horizontal)
-			: ui->mainToolBar->setOrientation(Qt::Vertical);
-	refreshStateMsg();
-
-	INFO << toolBarArea(ui->mainToolBar);
-
-}
-void MainWindow::closeEvent(QCloseEvent *e) {
-	if (qobject_cast<QSlider *>(sender())) {
-		INFO << e->type() << qobject_cast<QSlider *>(sender());
-		e->accept();
-//		onSliderClosed();
-	}
-
-	if (qobject_cast<QComboBox*>(sender())) {
-		INFO << e->type() << qobject_cast<QComboBox *>(sender());
-		e->accept();
-//		onCbxClosed();
-	}
-}
-void MainWindow::focusOutEvent(QFocusEvent *e) {
-	if (qobject_cast<QSlider *>(sender())) {
-		INFO << e->type() << qobject_cast<QSlider *>(sender());
-		e->accept();
-	}
-
-	if (qobject_cast<QComboBox*>(sender())) {
-		INFO << e->type() << qobject_cast<QComboBox *>(sender());
-		e->accept();
-	}
-}
-/* ======================================================================== */
-/*                             QSerial related                              */
-/* ======================================================================== */
-void MainWindow::openSerialPort() {
-	SettingsDialog::Settings p = settings->settings();
-	serial->setPortName(p.name);
-	serial->setBaudRate(p.baudRate);
-	serial->setDataBits(p.dataBits);
-	serial->setParity(p.parity);
-	serial->setStopBits(p.stopBits);
-	serial->setFlowControl(p.flowControl);
-
-	if (serial->open(QIODevice::ReadWrite)) {
-		console->setEnabled(true);
-		console->setLocalEchoEnabled(p.localEchoEnabled);
-		ui->actConnect->setEnabled(false);
-		ui->actDisconnect->setEnabled(true);
-		ui->actConfig->setEnabled(false);
-		refreshStateMsg();
-	}
-	else {
-		QMessageBox::critical(this, tr("Error"), serial->errorString());
-
-		showStatusMessage(tr("Open error"));
-	}
-}
-void MainWindow::refreshStateMsg() {
-	SettingsDialog::Settings p = settings->settings();
-	QString msgStr;
-
-	(wrapStateMsgAt < geometry().width())
-			? msgStr = stateStr
-			: msgStr = stateStrWraped;
-
-	showStatusMessage(msgStr
-							.arg(p.name).arg(p.stringBaudRate).arg(p.stringDataBits)
-							.arg(p.stringParity).arg(p.stringStopBits).arg(p.stringFlowControl));
-}
-void MainWindow::closeSerialPort() {
-	if (serial->isOpen())
-		serial->close();
-
-//	console->setEnabled(false);
-	ui->actConnect->setEnabled(true);
-	ui->actDisconnect->setEnabled(false);
-	ui->actConfig->setEnabled(true);
-	showStatusMessage(tr("Disconnected"));
-
-	QSETTINGS;
-}
-void MainWindow::writeData(const QByteArray &data) {
-	serial->write(data);
-}
-void MainWindow::readData() {
-	QByteArray data = serial->readAll();
-	console->putData(data);
-}
-void MainWindow::handleError(QSerialPort::SerialPortError error) {
-	if (error == QSerialPort::ResourceError) {
-		QMessageBox::critical(this, tr("Critical Error"), serial->errorString());
-		closeSerialPort();
-	}
-}
-/* ======================================================================== */
-/*                                 Helpers                                  */
-/* ======================================================================== */
-void MainWindow::initActionsConnections() {
-	connect(ui->actConnect, &QAction::triggered, this, &MainWindow::openSerialPort);
-	connect(ui->actDisconnect, &QAction::triggered, this, &MainWindow::closeSerialPort);
-	connect(ui->actQuit, &QAction::triggered, this, &MainWindow::close);
-	connect(ui->actConfig, &QAction::triggered, settings, &MainWindow::show);
-	connect(ui->actClear, &QAction::triggered, console, &Console::clear);
-	connect(ui->actAbout, &QAction::triggered, this, &MainWindow::about);
-}
-void MainWindow::showStatusMessage(const QString &message) {
-	status->setText(message);
-}
-void MainWindow::about() {
-	QMessageBox::about(this, "About " + qAppName(),
-							 tr("The <b>%1</b> provides standard as also non-standard "
-								 "serial port related functions.").arg(qAppName()));
-}

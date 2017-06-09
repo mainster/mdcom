@@ -25,10 +25,12 @@ QT_END_NAMESPACE
 
 
 class SettingsDialog : public QDialog {
+
 	Q_OBJECT
+	Q_ENUMS(BaudRateFast)
 
 public:
-	enum BaudRateBig {
+	enum BaudRateFast {
 		Baud1200 = 1200,
 		Baud2400 = 2400,
 		Baud4800 = 4800,
@@ -45,38 +47,23 @@ public:
 		Baud1Mega = 1000000,
 		UnknownBaud = -1
 	};
-	Q_ENUM(BaudRateBig)
+	Q_ENUM(BaudRateFast)
 
 	struct Settings {
-		Settings() {}
-		Settings(const Settings &others) :
-			name(others.name),
-			baudRate(others.baudRate),
-			stringBaudRate(others.stringBaudRate),
-			dataBits(others.dataBits),
-			stringDataBits(others.stringDataBits),
-			parity(others.parity),
-			stringParity(others.stringParity),
-			stopBits(others.stopBits),
-			stringStopBits(others.stringStopBits),
-			flowControl(others.flowControl),
-			stringFlowControl(others.stringFlowControl),
-			localEchoEnabled(others.localEchoEnabled) {}
-		~Settings() {}
-		QString name;
-		qint32 baudRate;
-		QString stringBaudRate;
-		QSerialPort::DataBits dataBits;
-		QString stringDataBits;
-		QSerialPort::Parity parity;
-		QString stringParity;
-		QSerialPort::StopBits stopBits;
-		QString stringStopBits;
-		QSerialPort::FlowControl flowControl;
-		QString stringFlowControl;
-		bool localEchoEnabled;
-	};
+		QString  ttyName, sDataBits, sBaudrate,
+		sParity, sStopBits, sFlowCtrl;
 
+		QSerialPort::DataBits dataBits;
+		QSerialPort::Parity parity;
+		QSerialPort::StopBits stopBits;
+		QSerialPort::FlowControl flowCtrl;
+
+		qint32 baudrate;
+		bool localEchoOn;
+
+		qreal sldOpacity;
+		QAbstractButton *btnGrpChecked;
+	};
 
 	explicit SettingsDialog(QWidget *parent = nullptr);
 	~SettingsDialog();
@@ -87,26 +74,35 @@ public:
 	QComboBox *getBaudrateBox();
 	void apply();
 
+public slots:
+	void reject() override;
+	void accept() override;
+	void promoteSettingsStruct(Settings &settings);
+
 private slots:
 	void showPortInfo(int idx);
 	void checkCustomBaudRatePolicy(int idx);
 	void checkCustomDevicePathPolicy(int idx);
-	void updateOptions(const int value);
+
+protected:
+	void showEvent(QShowEvent *e) override;
 
 private:
-	void fillPortsParameters();
+	void initialPortParams();
 	void fillPortsInfo();
-	void updateSettings();
+	void updateSettingsStruct(Settings &settings);
 
 private:
 	Ui::SettingsDialog	*ui;
-	Settings					currentSettings;
+	Settings					m_activeCfg, m_backupCfg;
 	QIntValidator			*intValidator;
 	QButtonGroup			*btnGrp;
 	QMainWindow				*mwin;
+	QMetaEnum				metaEnumAppear, metaEnumBauds;
 };
 
 Q_DECLARE_METATYPE(SettingsDialog::Settings)
+Q_DECLARE_METATYPE(SettingsDialog::BaudRateFast)
 
 
 #endif // SETTINGSDIALOG_H

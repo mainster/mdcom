@@ -22,6 +22,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
 	ui->setupUi(this);
 	QSETTINGS;
 
+	/**
+	 * @brief	Register Meta Type <MainWindow *>
+	 */
+	qRegisterMetaType<SettingsDialog*>("SettingsDialog");
+
 	try {
 		mwin = qobject_cast<QMainWindow *>(
 					listFindByName<QWidget *>(qApp->topLevelWidgets(),
@@ -37,12 +42,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
 	 * QMetaEnum:: is used to derive MainWindow::Appearance enumerators via
 	 * string representation (and vice versa),
 	 */
-	QMetaEnum metaEnum =
+	metaEnumAppear =
 			QMetaType::metaObjectForType(
 				QMetaType::type("MainWindow"))->enumerator(
 				QMetaType::metaObjectForType(
 					QMetaType::type("MainWindow"))->indexOfEnumerator("Appearance"));
-
 
 	btnGrp = new QButtonGroup();
 	QList<QRadioButton *> childs = ui->grBoxWinOpts->findChildren<QRadioButton *>();
@@ -56,77 +60,57 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
 	 */
 	for (it = childs.begin(); it != childs.end(); ++it) {
 		int idx = it - childs.begin();
-		INFO << tr("it=%1: ").arg(idx) << metaEnum.key(idx);
+		INFO << tr("it=%1: ").arg(idx) << metaEnumAppear.key(idx);
 
-		(*it)->setObjectName(tr("rb%1").arg(metaEnum.key(idx)));
-		(*it)->setText(metaEnum.key(idx));
+		(*it)->setObjectName(tr("rb%1").arg(metaEnumAppear.key(idx)));
+		(*it)->setText(metaEnumAppear.key(idx));
 		btnGrp->addButton(*it);
 	}
 
 	/**
 	 * @brief	Connect the common signal "QButtonGroup::buttonPressed(..sender..)"
-	 * to a lambda expression to invoke MainWindow::setAppearance
+	 * to lambda expression which invokes MainWindow::setAppearance write accessor
+	 * wherein accessor payload could be derived via metaEnum and QObject::
+	 * objectName() of the actual toggled QRadioButton.
+	 */
 	connect(btnGrp, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonPressed),
 			  this, [=](QAbstractButton *btn) {
-		mwin->setProperty("appearance", metaEnum.keyToValue(toCstr(btn->text())));
+		mwin->setProperty("appearance", metaEnumAppear.keyToValue(toCstr(btn->text())));
 	});
 
+	connect(ui->sldOpacity, &QSlider::valueChanged, this, [=](int value) {
+		mwin->setWindowOpacity(static_cast<qreal>(value)/100.f); });
 
-	connect(ui->serialPortInfoListBox,
+	connect(ui->cbxPortInfo,
 			  static_cast<void (QComboBox::*)(const int)>(&QComboBox::currentIndexChanged),
 			  this, &SettingsDialog::showPortInfo);
-	connect(ui->baudRateBox,
+	connect(ui->cbxBauds,
 			  static_cast<void (QComboBox::*)(const int)>(&QComboBox::currentIndexChanged),
 			  this, &SettingsDialog::checkCustomBaudRatePolicy);
-	connect(ui->serialPortInfoListBox,
+	connect(ui->cbxPortInfo,
 			  static_cast<void (QComboBox::*)(const int)>(&QComboBox::currentIndexChanged),
 			  this, &SettingsDialog::checkCustomDevicePathPolicy);
 
-	connect(ui->applyButton, &QPushButton::clicked, this, &SettingsDialog::apply);
-	connect(ui->sldOpacity, &QSlider::valueChanged, this, &SettingsDialog::updateOptions);
-//	connect(btnGrp, &QButtonGroup::, this, &SettingsDialog::updateOptions);
+	connect(ui->btnApply, &QPushButton::clicked,		this, &SettingsDialog::accept);
 
-//	connect(btnGrp, static_cast<void(QButtonGroup::*)(QAbstractButton *, bool)>(
-//				  &QButtonGroup::buttonToggled),[=](QAbstractButton *button, bool checked){ /* ... */ });
-
-//	connect(btnGrp, QOverload<int, bool>::of(&QButtonGroup::buttonToggled),
-//					this, &SettingsDialog::close);
-
-
+	ui->sldOpacity->setValue(static_cast<int>(mwin->windowOpacity()*100.f+.5f));
+	ui->cbxBauds->setInsertPolicy(QComboBox::NoInsert);
 	intValidator = new QIntValidator(0, 5e6, this);
-	ui->baudRateBox->setInsertPolicy(QComboBox::NoInsert);
 
-	fillPortsParameters();
+	initialPortParams();
 	fillPortsInfo();
 
-	ui->sldOpacity->setObjectName(tr("sldOpacity"));
-	ui->valOpacity->setBuddy( ui->sldOpacity );
-
-	updateSettings();
+	updateSettingsStruct(m_activeCfg);
+	m_backupCfg = m_activeCfg;
 }
 SettingsDialog::~SettingsDialog() {
 	delete ui;
-}
-void SettingsDialog::updateOptions(const int value) {
-	if (! qobject_cast<QWidget *>(sender()))
-		return;
-
-	if (qobject_cast<QWidget *>(sender()) == ui->valOpacity->buddy()) {
-		qreal newOpacity = qreal(value)/100;
-		ui->valOpacity->setNum(newOpacity);
-		mwin->setWindowOpacity(newOpacity);
-	}
-}
-
-void SettingsDialog::apply() {
-	updateSettings();
-	hide();
 }
 void SettingsDialog::showPortInfo(int idx) {
 	if (idx == -1)
 		return;
 
-	QStringList list = ui->serialPortInfoListBox->itemData(idx).toStringList();
+	QStringList list = ui->cbxPortInfo->itemData(idx).toStringList();
 	ui->descriptionLabel->setText(tr("Description: %1").arg(
 												list.count() > 1 ? list.at(1) : tr(blankString)));
 	ui->manufacturerLabel->setText(tr("Manufacturer: %1").arg(
@@ -141,53 +125,69 @@ void SettingsDialog::showPortInfo(int idx) {
 																				 list.at(6) : tr(blankString)));
 }
 void SettingsDialog::checkCustomBaudRatePolicy(int idx) {
-	bool isCustomBaudRate = !ui->baudRateBox->itemData(idx).isValid();
-	ui->baudRateBox->setEditable(isCustomBaudRate);
+	bool isCustomBaudRate = !ui->cbxBauds->itemData(idx).isValid();
+	ui->cbxBauds->setEditable(isCustomBaudRate);
 
 	if (isCustomBaudRate) {
-		ui->baudRateBox->clearEditText();
-		QLineEdit *edit = ui->baudRateBox->lineEdit();
+		ui->cbxBauds->clearEditText();
+		QLineEdit *edit = ui->cbxBauds->lineEdit();
 		edit->setValidator(intValidator);
 	}
 }
 void SettingsDialog::checkCustomDevicePathPolicy(int idx) {
-	bool isCustomPath = !ui->serialPortInfoListBox->itemData(idx).isValid();
-	ui->serialPortInfoListBox->setEditable(isCustomPath);
+	bool isCustomPath = !ui->cbxPortInfo->itemData(idx).isValid();
+	ui->cbxPortInfo->setEditable(isCustomPath);
 
 	if (isCustomPath)
-		ui->serialPortInfoListBox->clearEditText();
+		ui->cbxPortInfo->clearEditText();
 }
-void SettingsDialog::fillPortsParameters() {
-	ui->baudRateBox->addItem(QStringLiteral("9600"), QSerialPort::Baud9600);
-	ui->baudRateBox->addItem(QStringLiteral("19200"), QSerialPort::Baud19200);
-	ui->baudRateBox->addItem(QStringLiteral("38400"), QSerialPort::Baud38400);
-	ui->baudRateBox->addItem(QStringLiteral("115200"), QSerialPort::Baud115200);
-	ui->baudRateBox->addItem(tr("Custom"));
+void SettingsDialog::initialPortParams() {
+	bool ok = false;
 
-	ui->dataBitsBox->addItem(QStringLiteral("5"), QSerialPort::Data5);
-	ui->dataBitsBox->addItem(QStringLiteral("6"), QSerialPort::Data6);
-	ui->dataBitsBox->addItem(QStringLiteral("7"), QSerialPort::Data7);
-	ui->dataBitsBox->addItem(QStringLiteral("8"), QSerialPort::Data8);
-	ui->dataBitsBox->setCurrentIndex(3);
+	metaEnumBauds =
+			QMetaType::metaObjectForType(
+				QMetaType::type("SettingsDialog"))->enumerator(
+				QMetaType::metaObjectForType(
+					QMetaType::type("SettingsDialog"))->indexOfEnumerator("BaudRateFast"));
 
-	ui->parityBox->addItem(tr("None"), QSerialPort::NoParity);
-	ui->parityBox->addItem(tr("Even"), QSerialPort::EvenParity);
-	ui->parityBox->addItem(tr("Odd"), QSerialPort::OddParity);
-	ui->parityBox->addItem(tr("Mark"), QSerialPort::MarkParity);
-	ui->parityBox->addItem(tr("Space"), QSerialPort::SpaceParity);
+	for (int k=0; k < metaEnumBauds.keyCount(); k++) {
+		const char *sKey = metaEnumBauds.key(k);
 
-	ui->stopBitsBox->addItem(QStringLiteral("1"), QSerialPort::OneStop);
+		if (QString(sKey).contains(tr("UnknownBaud"), Qt::CaseInsensitive))
+			continue;
+		ui->cbxBauds->addItem(QString(sKey).remove("Baud"),
+									 metaEnumBauds.keyToValue(sKey, &ok));
+
+		if (! ok) {
+			INFO << tr("metaEnumBauds.keyToValue(sKey, &ok): ok is false!");
+			qApp->quit();
+		}
+	}
+
+	ui->cbxDataBits->addItem(QStringLiteral("5"), QSerialPort::Data5);
+	ui->cbxDataBits->addItem(QStringLiteral("6"), QSerialPort::Data6);
+	ui->cbxDataBits->addItem(QStringLiteral("7"), QSerialPort::Data7);
+	ui->cbxDataBits->addItem(QStringLiteral("8"), QSerialPort::Data8);
+	ui->cbxDataBits->setCurrentIndex(3);
+
+	ui->cbxParity->addItem(tr("None"), QSerialPort::NoParity);
+	ui->cbxParity->addItem(tr("Even"), QSerialPort::EvenParity);
+	ui->cbxParity->addItem(tr("Odd"), QSerialPort::OddParity);
+	ui->cbxParity->addItem(tr("Mark"), QSerialPort::MarkParity);
+	ui->cbxParity->addItem(tr("Space"), QSerialPort::SpaceParity);
+
+	ui->cbxStopBits->addItem(QStringLiteral("1"), QSerialPort::OneStop);
 #ifdef Q_OS_WIN
-	ui->stopBitsBox->addItem(tr("1.5"), QSerialPort::OneAndHalfStop);
+	ui->cbxStopBits->addItem(tr("1.5"), QSerialPort::OneAndHalfStop);
 #endif
-	ui->stopBitsBox->addItem(QStringLiteral("2"), QSerialPort::TwoStop);
+	ui->cbxStopBits->addItem(QStringLiteral("2"), QSerialPort::TwoStop);
 
-	ui->flowControlBox->addItem(tr("None"), QSerialPort::NoFlowControl);
-	ui->flowControlBox->addItem(tr("RTS/CTS"), QSerialPort::HardwareControl);
-	ui->flowControlBox->addItem(tr("XON/XOFF"), QSerialPort::SoftwareControl);
+	ui->cbxFlowCtrl->addItem(tr("None"), QSerialPort::NoFlowControl);
+	ui->cbxFlowCtrl->addItem(tr("RTS/CTS"), QSerialPort::HardwareControl);
+	ui->cbxFlowCtrl->addItem(tr("XON/XOFF"), QSerialPort::SoftwareControl);
 }
 void SettingsDialog::fillPortsInfo() {
-	ui->serialPortInfoListBox->clear();
+	ui->cbxPortInfo->clear();
 	QString description;
 	QString manufacturer;
 	QString serialNumber;
@@ -208,51 +208,71 @@ void SettingsDialog::fillPortsInfo() {
 			  << (info.productIdentifier() ? QString::number(info.productIdentifier(),
 																			 16) : blankString);
 
-		ui->serialPortInfoListBox->addItem(list.first(), list);
+		ui->cbxPortInfo->addItem(list.first(), list);
 	}
 
-	ui->serialPortInfoListBox->addItem(tr("Custom"));
+	ui->cbxPortInfo->addItem(tr("Custom"));
 }
-void SettingsDialog::updateSettings() {
-	currentSettings.name = ui->serialPortInfoListBox->currentText();
+void SettingsDialog::updateSettingsStruct(Settings &settings) {
+	settings.sBaudrate =		QString::number(settings.baudrate);
+	settings.ttyName =		ui->cbxPortInfo->currentText();
+	settings.sDataBits =		ui->cbxDataBits->currentText();
+	settings.sStopBits =		ui->cbxStopBits->currentText();
+	settings.sParity =		ui->cbxParity->currentText();
+	settings.sFlowCtrl =		ui->cbxFlowCtrl->currentText();
+	settings.localEchoOn =	ui->cbLocalEcho->isChecked();
 
-	if (ui->baudRateBox->currentIndex() == 4) {
-		currentSettings.baudRate = ui->baudRateBox->currentText().toInt();
-	} else {
-		currentSettings.baudRate = static_cast<QSerialPort::BaudRate>(
-					ui->baudRateBox->itemData(ui->baudRateBox->currentIndex()).toInt());
-	}
+	settings.dataBits = static_cast<QSerialPort::DataBits>(
+				ui->cbxDataBits->itemData(ui->cbxDataBits->currentIndex()).toInt());
+	settings.parity = static_cast<QSerialPort::Parity>(
+				ui->cbxParity->itemData(ui->cbxParity->currentIndex()).toInt());
+	settings.stopBits = static_cast<QSerialPort::StopBits>(
+				ui->cbxStopBits->itemData(ui->cbxStopBits->currentIndex()).toInt());
+	settings.flowCtrl = static_cast<QSerialPort::FlowControl>(
+				ui->cbxFlowCtrl->itemData(ui->cbxFlowCtrl->currentIndex()).toInt());
+}
+void SettingsDialog::promoteSettingsStruct(Settings &settings) {
+	ui->cbxPortInfo->setCurrentText(settings.ttyName);
+	ui->cbxDataBits->setCurrentText(settings.sDataBits);
+	ui->cbxStopBits->setCurrentText(settings.sStopBits);
+	ui->cbxParity->setCurrentText(settings.sParity);
+	ui->cbxFlowCtrl->setCurrentText(settings.sFlowCtrl);
+	ui->cbLocalEcho->setChecked(settings.localEchoOn);
 
-	currentSettings.stringBaudRate = QString::number(currentSettings.baudRate);
+	settings.btnGrpChecked->setChecked(true);
+	ui->sldOpacity->setValue(static_cast<int>(settings.sldOpacity*100.f+.5f));
 
-	currentSettings.dataBits = static_cast<QSerialPort::DataBits>(
-				ui->dataBitsBox->itemData(ui->dataBitsBox->currentIndex()).toInt());
-	currentSettings.stringDataBits = ui->dataBitsBox->currentText();
+}
 
-	currentSettings.parity = static_cast<QSerialPort::Parity>(
-				ui->parityBox->itemData(ui->parityBox->currentIndex()).toInt());
-	currentSettings.stringParity = ui->parityBox->currentText();
-
-	currentSettings.stopBits = static_cast<QSerialPort::StopBits>(
-				ui->stopBitsBox->itemData(ui->stopBitsBox->currentIndex()).toInt());
-	currentSettings.stringStopBits = ui->stopBitsBox->currentText();
-
-	currentSettings.flowControl = static_cast<QSerialPort::FlowControl>(
-				ui->flowControlBox->itemData(ui->flowControlBox->currentIndex()).toInt());
-	currentSettings.stringFlowControl = ui->flowControlBox->currentText();
-
-	currentSettings.localEchoEnabled = ui->localEchoCheckBox->isChecked();
-
+void SettingsDialog::accept() {
+	updateSettingsStruct(m_activeCfg);
+	m_activeCfg.sldOpacity = static_cast<qreal>(ui->sldOpacity->value())/100.f;
+	m_activeCfg.btnGrpChecked = btnGrp->checkedButton();
+	m_backupCfg = m_activeCfg;
+	hide();
+}
+void SettingsDialog::reject() {
+	m_activeCfg = m_backupCfg;
+	m_activeCfg.btnGrpChecked->setChecked(true);
+	ui->sldOpacity->setValue(static_cast<int>(m_activeCfg.sldOpacity*100.f+.5f));
+}
+/* ======================================================================== */
+/*                              Event handlers                              */
+/* ======================================================================== */
+void SettingsDialog::showEvent(QShowEvent *e) {
+	Q_UNUSED(e)
+	INFO << static_cast<int>(mwin->windowOpacity() * 100.f);
+	ui->sldOpacity->setValue(static_cast<int>(mwin->windowOpacity() * 100.f));
 }
 /* ======================================================================== */
 /*                                 Getters                                  */
 /* ======================================================================== */
 SettingsDialog::Settings SettingsDialog::settings() const
-{ return currentSettings; }
+{ return m_activeCfg; }
 QComboBox *SettingsDialog::getSerialPortInfoListBox()
-{ return ui->serialPortInfoListBox; }
+{ return ui->cbxPortInfo; }
 QComboBox *SettingsDialog::getBaudrateBox()
-{ return ui->baudRateBox; }
+{ return ui->cbxBauds; }
 
 /*
 QDataStream &operator<<(QDataStream &out, const SettingsDialog::Settings &v) {
@@ -278,3 +298,4 @@ QDataStream &operator>>(QDataStream &in, SettingsDialog::Settings &v) {
 	return in;
 }
 */
+
