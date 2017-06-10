@@ -12,6 +12,7 @@
 #include <QEvent>
 #include <QLayout>
 #include <QComboBox>
+#include <QRadioButton>
 
 #include "globals.h"
 

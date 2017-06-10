@@ -73,7 +73,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
 	 * wherein accessor payload could be derived via metaEnum and QObject::
 	 * objectName() of the actual toggled QRadioButton.
 	 */
-	connect(btnGrp, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonPressed),
+	connect(PONAM(btnGrp), QOverload<QAbstractButton *>::of(&QButtonGroup::buttonPressed),
 			  this, [=](QAbstractButton *btn) {
 		mwin->setProperty("appearance", metaEnumAppear.keyToValue(toCstr(btn->text())));
 	});
@@ -103,6 +103,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
 	updateSettingsStruct(m_activeCfg);
 	m_backupCfg = m_activeCfg;
 }
+
 SettingsDialog::~SettingsDialog() {
 	delete ui;
 }
@@ -243,13 +244,24 @@ void SettingsDialog::promoteSettingsStruct(Settings &settings) {
 	ui->sldOpacity->setValue(static_cast<int>(settings.sldOpacity*100.f+.5f));
 
 }
-
 void SettingsDialog::accept() {
 	updateSettingsStruct(m_activeCfg);
 	m_activeCfg.sldOpacity = static_cast<qreal>(ui->sldOpacity->value())/100.f;
 	m_activeCfg.btnGrpChecked = btnGrp->checkedButton();
 	m_backupCfg = m_activeCfg;
 	hide();
+
+	QSETTINGS;
+	foreach (QComboBox *cbx, findChildren<QComboBox *>())
+		config.setValue(cbx->objectName(), cbx->currentData());
+
+	config.setValue(ui->cbLocalEcho->objectName(),
+						 ui->cbLocalEcho->isChecked());
+	config.setValue(btnGrp->objectName(),
+						 btnGrp->checkedButton()->objectName());
+
+	config.sync();
+
 }
 void SettingsDialog::reject() {
 	m_activeCfg = m_backupCfg;
@@ -269,33 +281,21 @@ void SettingsDialog::showEvent(QShowEvent *e) {
 /* ======================================================================== */
 SettingsDialog::Settings SettingsDialog::settings() const
 { return m_activeCfg; }
-QComboBox *SettingsDialog::getSerialPortInfoListBox()
+QComboBox *SettingsDialog::getCbxPortInfo()
 { return ui->cbxPortInfo; }
-QComboBox *SettingsDialog::getBaudrateBox()
+QComboBox *SettingsDialog::getCbxBauds()
 { return ui->cbxBauds; }
-
-/*
-QDataStream &operator<<(QDataStream &out, const SettingsDialog::Settings &v) {
-	out << v.name << v.baudRate << v.stringBaudRate << v.dataBits
-		 << v.stringDataBits << v.parity << v.stringParity << v.stopBits
-		 << v.stringStopBits << v.flowControl << v.stringFlowControl
-		 << v.localEchoEnabled;
-	return out;
-}
-QDataStream &operator>>(QDataStream &in, SettingsDialog::Settings &v) {
-	in >> v.name;
-	in >> v.baudRate ;
-	in >> v.stringBaudRate;
-	in >> v.stringDataBits;
-	in >> v.stringParity;
-	in >> v.stringStopBits;
-	in >> v.stringFlowControl;
-	in >> v.localEchoEnabled;
-	//	in >> QSerialPort::DataBits(v.dataBits);
-	//	in >> v.parity;
-	//	in >> v.stopBits;
-	//	in >> v.flowControl;
-	return in;
-}
-*/
-
+QComboBox *SettingsDialog::getCbxFlowCtrl()
+{ return ui->cbxFlowCtrl; }
+QComboBox *SettingsDialog::getCbxDataBits()
+{ return ui->cbxDataBits; }
+QComboBox *SettingsDialog::getCbxParity()
+{ return ui->cbxParity; }
+QComboBox *SettingsDialog::getCbxStopBits()
+{ return ui->cbxStopBits; }
+QCheckBox *SettingsDialog::getCbLocalEcho()
+{ return ui->cbLocalEcho; }
+QButtonGroup *SettingsDialog::getBtnGrp() const
+{ return btnGrp; }
+QSlider *SettingsDialog::getSldOpacity() const
+{ return ui->sldOpacity; }

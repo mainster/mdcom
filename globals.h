@@ -9,6 +9,9 @@
 
 #include "types.h"
 
+#define PONAM(o) (o->setObjectName(#o),o)		//!< Set pointed objects name
+#define ONAM(o) (o.setObjectName(#o),o)		//!< Set objects name
+
 /* ======================================================================== */
 /*                       Paths / vendor informations                        */
 /* ======================================================================== */

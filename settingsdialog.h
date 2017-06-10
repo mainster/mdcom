@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QDebug>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QMainWindow>
 #include <QButtonGroup>
 #include <QtGlobal>
@@ -70,9 +71,18 @@ public:
 
 	Settings settings() const;
 
-	QComboBox *getSerialPortInfoListBox();
-	QComboBox *getBaudrateBox();
+	QComboBox *getCbxPortInfo();
+	QComboBox *getCbxBauds();
+	QComboBox *getCbxFlowCtrl();
+	QComboBox *getCbxDataBits();
+	QComboBox *getCbxParity();
+	QComboBox *getCbxStopBits();
+	QCheckBox *getCbLocalEcho();
+	QButtonGroup *getBtnGrp() const;
+	QSlider *getSldOpacity() const;
+	void updateSettingsStruct(Settings &settings);
 	void apply();
+
 
 public slots:
 	void reject() override;
@@ -90,7 +100,6 @@ protected:
 private:
 	void initialPortParams();
 	void fillPortsInfo();
-	void updateSettingsStruct(Settings &settings);
 
 private:
 	Ui::SettingsDialog	*ui;

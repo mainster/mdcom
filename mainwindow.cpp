@@ -2,7 +2,7 @@
 #include "ui_mainwindow.h"
 #include "console.h"
 #include "settingsdialog.h"
-
+#include <QRadioButton>
 #include <QMessageBox>
 #include <QLabel>
 #include <QTime>
@@ -74,11 +74,49 @@ MainWindow::MainWindow(QWidget *parent) :
 
 	for (int k=0; k<plist.length(); k++ ) {
 		if (sers.contains(plist.at(k).serialNumber())) {
-			settings->getSerialPortInfoListBox()->setCurrentIndex(k);
-			settings->getBaudrateBox()->setCurrentIndex(4);
-			settings->getBaudrateBox()->setCurrentText(config.value(tr("baudrate")).toString());
-			settings->apply();
-			openSerialPort();
+			settings->getCbxPortInfo()->setCurrentIndex(k);
+
+			settings->getCbxBauds()->setCurrentIndex(
+						settings->getCbxBauds()->findData(
+							config.value(settings->getCbxBauds()
+											 ->objectName())));
+
+			settings->getCbxDataBits()->setCurrentIndex(
+						settings->getCbxDataBits()->findData(
+							config.value(settings->getCbxDataBits()
+											 ->objectName())));
+
+			settings->getCbxFlowCtrl()->setCurrentIndex(
+						settings->getCbxFlowCtrl()->findData(
+							config.value(settings->getCbxFlowCtrl()
+											 ->objectName())));
+
+			settings->getCbxParity()->setCurrentIndex(
+						settings->getCbxParity()->findData(
+							config.value(settings->getCbxParity()
+											 ->objectName())));
+
+			settings->getCbxStopBits()->setCurrentIndex(
+						settings->getCbxStopBits()->findData(
+							config.value(settings->getCbxStopBits()
+											 ->objectName())));
+
+			settings->getCbLocalEcho()->setChecked(
+						config.value(settings->getCbLocalEcho()
+										 ->objectName()).toBool());
+
+			foreach (QAbstractButton *rb, settings->getBtnGrp()->buttons())
+				if (rb->objectName() == config.value(settings->getBtnGrp()->objectName()))
+					rb->setChecked(true);
+
+//			settings->getSldOpacity()->setValue(
+//						static_cast<int>(config.value(
+//												  settings->getSldOpacity()
+//												  ->objectName()).toReal()*100.f+.5f));
+			settings->getSldOpacity()->setValue(60);
+
+			settings->accept();
+
 			break;
 		}
 	}
